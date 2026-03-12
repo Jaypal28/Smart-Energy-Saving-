@@ -1,0 +1,14 @@
+opencv-python
+opencv-contrib-python
+numpy
+mediapipe
+ultralytics
+pillow
+tkinter-tooltip
+pyserial
+scipy
+matplotlib
+configparser
+flask
+flask-cors
+waitress
