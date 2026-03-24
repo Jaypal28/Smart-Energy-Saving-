@@ -36,7 +36,7 @@ from energy_manager import EnergyManager
 from audio_module import AudioModule
 from gui_interface import SmartHomeGUI
 import tkinter as tk
-import server_bridge
+from api_v2 import create_app, socketio, emit_system_update
 import threading
 
 
@@ -95,9 +95,23 @@ class SmartHomeAutomation:
         self.current_data = {
             'detections': {'humans': [], 'animals': []},
             'pose_analysis': {},
-            'brightness_analysis': {},
-            'airflow_analysis': {},
-            'audio_analysis': {},
+            'brightness_analysis': {
+                'mean_brightness': 0, 
+                'status': 'optimal', 
+                'adjustment_needed': False,
+                'recommendation': 'Initializing...'
+            },
+            'airflow_analysis': {
+                'airflow_value': 0, 
+                'status': 'optimal', 
+                'adjustment_needed': False,
+                'recommendation': 'Initializing...'
+            },
+            'audio_analysis': {
+                'presence_detected': False, 
+                'sound_level': 0,
+                'recommendation': 'Initializing...'
+            },
             'decisions': {},
             'energy_stats': {},
             'recommendations': []
@@ -116,8 +130,12 @@ class SmartHomeAutomation:
         # Error message flag to prevent spam
         self.camera_error_shown = False
         
-        # Start API bridge server in background
-        self.api_thread = threading.Thread(target=server_bridge.start_api_server, daemon=True)
+        # Start Professional API v2 in background
+        self.flask_app = create_app()
+        self.api_thread = threading.Thread(
+            target=lambda: socketio.run(self.flask_app, port=5000, host='0.0.0.0', debug=False, use_reloader=False, allow_unsafe_werkzeug=True),
+            daemon=True
+        )
         self.api_thread.start()
         
         print("Smart Home Automation System initialized successfully!")
@@ -211,23 +229,36 @@ class SmartHomeAutomation:
         self.frame_index += 1
         result_frame = self.detection_module.draw_detections(result_frame, detections)
         
-        # 2. Pose and motion analysis (if humans detected)
-        pose_analysis = {'pose_detected': False, 'motion_level': 0.0, 'activity_type': 'none'}
-        if detections['humans']:
+        # 2. Pose and motion analysis (Optimized with frame skipping)
+        pose_analysis = self.current_data.get('pose_analysis', {'pose_detected': False, 'motion_level': 0.0, 'activity_type': 'none'})
+        
+        if detections['humans'] and self.frame_index % self.process_every_n_frames == 0:
             # Analyze first human detected
             human_bbox = detections['humans'][0][:4]
             pose_analysis = self.pose_motion_module.analyze_frame(frame, human_bbox)
+        
+        if pose_analysis.get('pose_detected', False):
             result_frame = self.pose_motion_module.draw_pose(result_frame, pose_analysis)
         
-        # 3. Brightness analysis
-        brightness_analysis = self.brightness_module.analyze_frame(frame)
+        # 3. Brightness analysis (Optimized skipping)
+        if self.frame_index % 2 == 0:
+            brightness_analysis = self.brightness_module.analyze_frame(frame)
+        else:
+            brightness_analysis = self.current_data.get('brightness_analysis', {})
+        
         result_frame = self.brightness_module.draw_brightness_overlay(result_frame, brightness_analysis)
         
-        # 4. Airflow analysis
-        airflow_analysis = self.airflow_module.read_airflow()
+        # 4. Airflow analysis (Lower frequency)
+        if self.frame_index % 10 == 0:
+            airflow_analysis = self.airflow_module.read_airflow()
+        else:
+            airflow_analysis = self.current_data.get('airflow_analysis', {})
         
-        # 5. Audio presence analysis
-        audio_analysis = self.audio_module.read_sound_level(occupancy_hint=bool(detections['humans']))
+        # 5. Audio presence analysis (Lower frequency)
+        if self.frame_index % 5 == 0:
+            audio_analysis = self.audio_module.read_sound_level(occupancy_hint=bool(detections['humans']))
+        else:
+            audio_analysis = self.current_data.get('audio_analysis', {})
         
         # 6. Energy management decisions
         decisions = self.energy_manager.make_decisions(
@@ -246,8 +277,8 @@ class SmartHomeAutomation:
             'recommendations': self.energy_manager.get_recommendations()
         }
         
-        # Update API bridge
-        server_bridge.update_bridge_data(self.current_data)
+        # Update API bridge (Real-time Broadcast)
+        emit_system_update(self.current_data)
         
         # Draw additional information on frame
         result_frame = self._draw_info_overlay(result_frame)
@@ -378,6 +409,9 @@ class SmartHomeAutomation:
             'energy_stats': self.energy_manager.get_energy_statistics(),
             'recommendations': self.energy_manager.get_recommendations()
         }
+        
+        # Broadcast to web dashboard even in simulation mode
+        emit_system_update(self.current_data)
         
         return frame
     

@@ -1,14 +1,29 @@
+# Core Computer Vision & Processing
 opencv-python
 opencv-contrib-python
 numpy
 mediapipe
 ultralytics
+torch
+torchvision
 pillow
+
+# Interface & Graphics
 tkinter-tooltip
-pyserial
-scipy
 matplotlib
-configparser
+scipy
+
+# Backend & API (v2)
 flask
 flask-cors
+flask-socketio
+flask-sqlalchemy
+flask-jwt-extended
+flask-migrate
 waitress
+eventlet
+python-dotenv
+
+# Hardware & Configuration
+pyserial
+configparser

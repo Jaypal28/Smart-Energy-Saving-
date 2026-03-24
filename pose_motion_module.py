@@ -49,7 +49,7 @@ class PoseMotionModule:
                 self.mp_pose = mp.solutions.pose
                 self.pose = self.mp_pose.Pose(
                     static_image_mode=False,
-                    model_complexity=1,
+                    model_complexity=0, # Changed from 1 to 0 for better performance
                     smooth_landmarks=True,
                     enable_segmentation=False,
                     min_detection_confidence=0.5,
@@ -109,7 +109,7 @@ class PoseMotionModule:
         
         # Determine activity type
         results['activity_type'] = self._classify_activity(results)
-        results['is_active'] = results['motion_level'] > (self.motion_sensitivity / 10.0)
+        results['is_active'] = bool(results['motion_level'] > (self.motion_sensitivity / 10.0))
         
         return results
     
@@ -152,8 +152,8 @@ class PoseMotionModule:
                 if motion_vectors:
                     # Calculate average motion magnitude
                     avg_motion = np.mean([np.sqrt(dx**2 + dy**2) for dx, dy in motion_vectors])
-                    results['motion_level'] = min(1.0, avg_motion / 50.0)  # Normalize
-                    results['motion_vector'] = np.mean(motion_vectors, axis=0)
+                    results['motion_level'] = float(min(1.0, avg_motion / 50.0))  # Normalize
+                    results['motion_vector'] = [float(x) for x in np.mean(motion_vectors, axis=0)]
             
             self.prev_landmarks = landmarks
         
@@ -175,22 +175,9 @@ class PoseMotionModule:
         total_pixels = frame.shape[0] * frame.shape[1]
         results['motion_level'] = min(1.0, motion_pixels / (total_pixels * 0.1))
         
-        # Calculate optical flow for motion vector
-        if self.prev_frame is not None:
-            # Fix: Ensure previous and current frames have the same shape
-            # ROI size can change if the human detection bounding box changes
-            if self.prev_frame.shape == gray.shape:
-                flow = cv2.calcOpticalFlowFarneback(
-                    self.prev_frame, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
-                )
-                magnitude = np.sqrt(flow[..., 0]**2 + flow[..., 1]**2)
-                if np.sum(magnitude > 0) > 0:
-                    avg_magnitude = np.mean(magnitude[magnitude > 0])
-                    results['motion_level'] = min(1.0, avg_magnitude / 10.0)
-                    results['motion_vector'] = np.mean(flow[magnitude > 0], axis=0)
-            else:
-                # If shapes don't match, we can't calculate flow, but we update the reference
-                self.prev_frame = gray
+        # Optical flow removed for performance
+        results['motion_vector'] = [0.0, 0.0]
+        self.prev_frame = gray
         
         self.prev_frame = gray
         results['pose_detected'] = results['motion_level'] > 0.1

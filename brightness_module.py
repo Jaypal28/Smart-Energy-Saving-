@@ -75,8 +75,8 @@ class BrightnessModule:
             'min_brightness': float(min_brightness),
             'max_brightness': float(max_brightness),
             'status': status,
-            'adjustment_needed': adjustment_needed,
-            'adjustment_percentage': adjustment_percentage,
+            'adjustment_needed': bool(adjustment_needed),
+            'adjustment_percentage': int(adjustment_percentage),
             'recommendation': self._get_recommendation(status, brightness_diff)
         }
         

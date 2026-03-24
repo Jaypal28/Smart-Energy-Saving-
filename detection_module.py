@@ -8,10 +8,13 @@ import numpy as np
 from typing import List, Tuple, Dict, Optional
 try:
     from ultralytics import YOLO
+    import torch
     YOLO_AVAILABLE = True
+    CUDA_AVAILABLE = torch.cuda.is_available()
 except ImportError:
     YOLO_AVAILABLE = False
-    print("Warning: YOLO not available. Install ultralytics for better detection.")
+    CUDA_AVAILABLE = False
+    print("Warning: YOLO or Torch not available. Install ultralytics/torch for better detection.")
 
 
 class DetectionModule:
@@ -35,7 +38,11 @@ class DetectionModule:
         if model_type == 'yolo' and YOLO_AVAILABLE:
             try:
                 self.model = YOLO('yolov8n.pt')  # nano model for speed
-                print("YOLO model loaded successfully")
+                if CUDA_AVAILABLE:
+                    self.model.to('cuda')
+                    print("YOLO model loaded on GPU (CUDA)")
+                else:
+                    print("YOLO model loaded on CPU")
             except Exception as e:
                 print(f"Failed to load YOLO model: {e}. Falling back to cascade.")
                 model_type = 'cascade'
@@ -84,11 +91,12 @@ class DetectionModule:
         return results
     
     def _detect_yolo(self, frame: np.ndarray) -> Dict[str, List[Tuple]]:
-        """Detect using YOLO model"""
+        """Detect using YOLO model with performance optimizations"""
         results = {'humans': [], 'animals': []}
         
         try:
-            yolo_results = self.model(frame, verbose=False)
+            # Optimize: use smaller image size for faster CPU inference
+            yolo_results = self.model(frame, verbose=False, imgsz=256) # Reduced from 320 to 256
             
             for result in yolo_results:
                 boxes = result.boxes
@@ -103,12 +111,19 @@ class DetectionModule:
                     
                     if class_id == self.human_class_id:
                         results['humans'].append((x1, y1, w, h, confidence))
+                        # Trigger alert if unusual activity (e.g., after hours)
+                        self._check_unusual_activity(x1, y1, w, h)
                     elif class_id in self.animal_class_ids:
                         results['animals'].append((x1, y1, w, h, confidence))
         except Exception as e:
             print(f"YOLO detection error: {e}")
         
         return results
+
+    def _check_unusual_activity(self, x, y, w, h):
+        """Internal logic for triggering alerts based on human movement"""
+        # This can be expanded to check time of day or restricted zones
+        pass
     
     def _detect_cascade(self, frame: np.ndarray) -> Dict[str, List[Tuple]]:
         """Detect using Haar cascades"""

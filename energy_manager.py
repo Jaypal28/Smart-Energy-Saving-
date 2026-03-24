@@ -57,6 +57,7 @@ class EnergyManager:
         }
         self.session_start_time = time.time()
         self.last_log_time = time.time()
+        self.last_decision_time = time.time() # Track actual time between frames
         
         # Decision history
         self.decision_history = []
@@ -108,6 +109,13 @@ class EnergyManager:
             'timestamp': datetime.now().isoformat()
         }
         
+        # automation: Hard turn off when unoccupied
+        if not self.is_occupied:
+            decisions['lights'] = 'off'
+            decisions['ventilation'] = 'off'
+            decisions['heating'] = 'off'
+            decisions['cooling'] = 'off'
+
         # Domain specific adjustments
         if self.domain_mode == 'industrial':
             # Industrial mode might keep ventilation higher regardless of occupancy
@@ -124,6 +132,10 @@ class EnergyManager:
             self.decision_history.pop(0)
         
         self._update_energy_consumption(decisions)
+        
+        # Push to real-time dashboard via API bridge if needed
+        # In v2, this would use socketio.emit
+        
         return decisions
 
     def set_domain(self, mode: str):
@@ -192,8 +204,12 @@ class EnergyManager:
             'cooling': {'on': 1500, 'optimal': 1500, 'off': 0}
         }
         
-        # Calculate energy for this update cycle (assuming 1 second)
-        dt = 1.0 / 3600.0  # Convert seconds to hours
+        # Calculate energy for this update cycle based on actual elapsed time
+        current_time = time.time()
+        elapsed_seconds = current_time - self.last_decision_time
+        self.last_decision_time = current_time
+        
+        dt = elapsed_seconds / 3600.0  # Convert elapsed seconds to hours
         
         for device in ['lights', 'ventilation', 'heating', 'cooling']:
             if device in decisions:
