@@ -14,6 +14,7 @@ matplotlib
 scipy
 
 # Backend & API (v2)
+Flask==2.2.5
 flask
 flask-cors
 flask-socketio
