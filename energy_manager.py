@@ -37,7 +37,9 @@ class EnergyManager:
         
         # State tracking
         self.last_presence_time = time.time()
+        self.presence_start_time = None
         self.is_occupied = False
+        self.is_present_now = False
         self.domain_mode = 'home'  # options: 'home', 'office', 'industrial'
         self.sound_presence = False
         
@@ -55,6 +57,7 @@ class EnergyManager:
             'cooling': 0.0,
             'ventilation': 0.0
         }
+        self.current_power_watts = 0.0
         self.session_start_time = time.time()
         self.last_log_time = time.time()
         self.last_decision_time = time.time() # Track actual time between frames
@@ -68,10 +71,17 @@ class EnergyManager:
         has_presence = humans_detected > 0 or animals_detected > 0 or sound_detected
         self.sound_presence = sound_detected
         
+        # Override auto_off_delay to 10 seconds for immediate showcase
+        self.auto_off_delay = 10
+        
         if has_presence:
+            if not self.is_present_now:
+                self.presence_start_time = time.time()
             self.last_presence_time = time.time()
             self.is_occupied = True
+            self.is_present_now = True
         else:
+            self.is_present_now = False
             # Check if auto-off delay has passed
             if self.last_presence_time:
                 time_since_presence = time.time() - self.last_presence_time
@@ -97,35 +107,59 @@ class EnergyManager:
         # Update presence
         self.update_presence(humans, animals, sound_detected)
         
+        # Calculate remaining time
+        effective_delay = self.auto_off_delay
+        if self.domain_mode == 'office': effective_delay *= 1.5
+        elif self.domain_mode == 'industrial': effective_delay *= 2.0
+        
+        if self.is_present_now:
+            remaining_time = effective_delay
+        elif self.is_occupied:
+            time_since = time.time() - self.last_presence_time
+            remaining_time = max(0.0, effective_delay - time_since)
+        else:
+            remaining_time = 0.0
+
+        # Occupancy-Based Control: ONE master variable mapping
+        if self.is_occupied:
+            light_state = 'on'
+            fan_state = 'on'
+            ac_state = 'on'
+            system_status = 'on'
+        else:
+            light_state = 'off'
+            fan_state = 'off'
+            ac_state = 'off'
+            system_status = 'off'
+        
         decisions = {
-            'lights': self._decide_lighting(brightness_analysis, pose_analysis),
-            'ventilation': self._decide_ventilation(airflow_analysis, pose_analysis),
-            'heating': self._decide_heating(airflow_analysis),
-            'cooling': self._decide_cooling(airflow_analysis),
+            'lights': light_state,
+            'ventilation': fan_state,
+            'heating': 'off',
+            'cooling': ac_state,
+            'light': light_state.upper(),
+            'fan': fan_state.upper(),
+            'ac': ac_state.upper(),
+            'system_status': system_status.upper(),
+            'remaining_time': int(remaining_time),
             'energy_saving_active': self.energy_saving_mode,
             'domain_mode': self.domain_mode,
             'occupancy_status': 'occupied' if self.is_occupied else 'unoccupied',
-            'duration_seconds': int(time.time() - self.last_presence_time) if self.last_presence_time else 0,
+            'duration_seconds': int(time.time() - self.presence_start_time) if (self.is_present_now and self.presence_start_time) else 0,
             'timestamp': datetime.now().isoformat()
         }
         
-        # automation: Hard turn off when unoccupied
-        if not self.is_occupied:
-            decisions['lights'] = 'off'
-            decisions['ventilation'] = 'off'
-            decisions['heating'] = 'off'
-            decisions['cooling'] = 'off'
-
         # Domain specific adjustments
         if self.domain_mode == 'industrial':
             # Industrial mode might keep ventilation higher regardless of occupancy
             if decisions.get('ventilation') == 'off' and self.energy_saving_mode:
                 decisions['ventilation'] = 'low' # Safety minimum
+                decisions['fan'] = 'LOW'
         
-        # Update device states
-        for device, state in decisions.items():
-            if device in self.device_states:
-                self.device_states[device] = state
+        # Update device states (mapped for legacy support)
+        for device in ['lights', 'ventilation', 'heating', 'cooling']:
+            if device in decisions and device in self.device_states:
+                self.device_states[device] = decisions[device]
         
         self.decision_history.append(decisions.copy())
         if len(self.decision_history) > 100:
@@ -184,7 +218,7 @@ class EnergyManager:
             return 'off'
         
         # This is a placeholder - would integrate with temperature sensor
-        return 'optimal'
+        return 'off'
     
     def _decide_cooling(self, airflow: Dict) -> str:
         """Decide cooling control (simplified - would use temperature sensor in real implementation)"""
@@ -192,7 +226,7 @@ class EnergyManager:
             return 'off'
         
         # This is a placeholder - would integrate with temperature sensor
-        return 'optimal'
+        return 'off'
     
     def _update_energy_consumption(self, decisions: Dict):
         """Update estimated energy consumption"""
@@ -211,10 +245,12 @@ class EnergyManager:
         
         dt = elapsed_seconds / 3600.0  # Convert elapsed seconds to hours
         
+        current_power = 0.0
         for device in ['lights', 'ventilation', 'heating', 'cooling']:
             if device in decisions:
                 state = decisions[device]
                 power = power_consumption[device].get(state, 0)
+                current_power += power
                 energy_added = power * dt / 1000.0
                 self.energy_consumption[device] += energy_added  # Convert to kWh
                 
@@ -223,6 +259,8 @@ class EnergyManager:
                     cost_per_kwh = 0.12
                     self.db.log_energy(device, str(state), float(power), float(energy_added), float(energy_added * cost_per_kwh))
         
+        
+        self.current_power_watts = current_power
         if time.time() - self.last_log_time >= 60.0:
             self.last_log_time = time.time()
     
@@ -246,6 +284,7 @@ class EnergyManager:
             'total_cost_usd': round(total_cost, 4),
             'estimated_savings_usd': round(estimated_savings, 4),
             'session_duration_hours': round(session_duration, 2),
+            'current_power_watts': round(self.current_power_watts, 2),
             'average_power_watts': round(total_energy / session_duration * 1000, 2) if session_duration > 0 else 0,
             'breakdown': {k: round(v, 4) for k, v in self.energy_consumption.items()},
             'carbon_footprint_kg': round(total_energy * 0.5, 2)  # Rough estimate: 0.5 kg CO2 per kWh

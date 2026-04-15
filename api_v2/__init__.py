@@ -7,12 +7,23 @@ from flask_cors import CORS
 from .models import db, User, DeviceState
 
 import numpy as np
-socketio = SocketIO(cors_allowed_origins="*", async_mode='threading', engineio_logger=True, logger=True)
+socketio = SocketIO(cors_allowed_origins="*", async_mode='threading', engineio_logger=False, logger=False)
 
 # In-memory cache for the latest system state (shared between WS and REST)
 latest_data = {
+    'occupancy': 'Empty',
+    'system': 'OFF',
+    'devices': {
+        'light': 'OFF',
+        'fan': 'OFF',
+        'ac': 'OFF'
+    },
+    'activity': 'inactive',
+    'remaining_time': 0,
+    # Old structure maintained for frontend charts
     'stats': {
         'energy': 0.0,
+        'power': 0.0,
         'cost': 0.0,
         'savings': 0.0,
         'carbon': 0.0,
@@ -75,23 +86,17 @@ def sanitize_for_json(obj):
 
 # Helper for emitting real-time data
 def emit_system_update(data):
-    """
-    Transforms system data into the structure expected by the frontend:
-    - stats: { energy, cost, savings, carbon, occupancy, duration }
-    - decisions: { lights, ventilation, ... }
-    - activities: [{ id, time, message }]
-    """
     from datetime import datetime
     import time
     global latest_data
     
-    # 1. Transform energy_stats into 'stats'
     energy_info = data.get('energy_stats', {})
     decisions = data.get('decisions', {})
+    pose = data.get('pose_analysis', {})
     
     frontend_stats = {
         'energy': energy_info.get('total_energy_kwh', 0.0),
-        'power': energy_info.get('average_power_watts', 0.0),
+        'power': energy_info.get('current_power_watts', 0.0),
         'cost': energy_info.get('total_cost_usd', 0.0),
         'savings': energy_info.get('estimated_savings_usd', 0.0),
         'carbon': energy_info.get('carbon_footprint_kg', 0.0),
@@ -99,8 +104,6 @@ def emit_system_update(data):
         'duration': decisions.get('duration_seconds', 0)
     }
     
-    # 2. Extract activities from pose analysis
-    pose = data.get('pose_analysis', {})
     if pose.get('pose_detected') and pose.get('activity_type') != 'none':
         new_activity = {
             'id': int(time.time() * 1000),
@@ -108,11 +111,23 @@ def emit_system_update(data):
             'message': f"Activity: {pose.get('activity_type')}",
             'type': 'system'
         }
-        # Add to history (limit to 10)
         latest_data['activities'].insert(0, new_activity)
         latest_data['activities'] = latest_data['activities'][:10]
     
-    # 3. Update global cache
+    # New JSON Requirements
+    latest_data['occupancy'] = "Occupied" if decisions.get('occupancy_status') == 'occupied' else "Empty"
+    latest_data['system'] = decisions.get('system_status', 'OFF')
+    latest_data['devices'] = {
+        'light': decisions.get('light', 'OFF'),
+        'fan': decisions.get('fan', 'OFF'),
+        'ac': decisions.get('ac', 'OFF')
+    }
+    
+    is_active = pose.get('pose_detected', False) and pose.get('activity_type') not in ['none', 'idle']
+    latest_data['activity'] = "active" if is_active else "inactive"
+    latest_data['remaining_time'] = decisions.get('remaining_time', 0)
+    
+    # Backwards compatibility
     latest_data['stats'] = frontend_stats
     latest_data['decisions'] = decisions
     

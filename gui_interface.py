@@ -138,8 +138,8 @@ class SmartHomeGUI:
         main_frame = tk.Frame(self.root, bg='#2b2b2b')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Configure grid columns: Video gets more weight (2/3) than Info (1/3)
-        main_frame.grid_columnconfigure(0, weight=2)
+        # Configure grid columns: Video gets more weight (4/5) than Info (1/5)
+        main_frame.grid_columnconfigure(0, weight=4)
         main_frame.grid_columnconfigure(1, weight=1)
         main_frame.grid_rowconfigure(0, weight=1)
         
@@ -209,6 +209,11 @@ class SmartHomeGUI:
         energy_tab = tk.Frame(notebook, bg='#2b2b2b')
         notebook.add(energy_tab, text="⚡ Energy")
         self._create_energy_tab(energy_tab)
+        
+        # Appliances tab
+        appliances_tab = tk.Frame(notebook, bg='#2b2b2b')
+        notebook.add(appliances_tab, text="🔌 Appliances")
+        self._create_appliances_tab(appliances_tab)
         
         # Logs tab
         logs_tab = tk.Frame(notebook, bg='#2b2b2b')
@@ -368,6 +373,26 @@ class SmartHomeGUI:
                                                               wrap=tk.WORD,
                                                               height=8)
         self.recommendations_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    
+    def _create_appliances_tab(self, parent):
+        """Create appliances status tab"""
+        # Light
+        light_frame = tk.LabelFrame(parent, text="Light", bg='#2b2b2b', fg='#ffffff', font=('Arial', 10, 'bold'))
+        light_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.appliance_light_label = tk.Label(light_frame, text="Status: Off", bg='#2b2b2b', fg='#ffffff', font=('Arial', 10))
+        self.appliance_light_label.pack(pady=5)
+        
+        # Fan
+        fan_frame = tk.LabelFrame(parent, text="Fan", bg='#2b2b2b', fg='#ffffff', font=('Arial', 10, 'bold'))
+        fan_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.appliance_fan_label = tk.Label(fan_frame, text="Status: Off", bg='#2b2b2b', fg='#ffffff', font=('Arial', 10))
+        self.appliance_fan_label.pack(pady=5)
+        
+        # AC
+        ac_frame = tk.LabelFrame(parent, text="AC", bg='#2b2b2b', fg='#ffffff', font=('Arial', 10, 'bold'))
+        ac_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.appliance_ac_label = tk.Label(ac_frame, text="Status: Off", bg='#2b2b2b', fg='#ffffff', font=('Arial', 10))
+        self.appliance_ac_label.pack(pady=5)
     
     def _create_logs_tab(self, parent):
         """Create logs tab"""
@@ -705,6 +730,14 @@ class SmartHomeGUI:
                 self.ventilation_label.config(text=f"Ventilation: {decisions.get('ventilation', 'off')}")
                 occupancy = decisions.get('occupancy_status', 'unknown')
                 self.occupancy_label.config(text=f"Status: {occupancy.title()}")
+                
+                # Update appliance tab labels
+                if hasattr(self, 'appliance_light_label'):
+                    self.appliance_light_label.config(text=f"Status: {str(decisions.get('lights', 'off')).title()}")
+                if hasattr(self, 'appliance_fan_label'):
+                    self.appliance_fan_label.config(text=f"Status: {str(decisions.get('ventilation', 'off')).title()}")
+                if hasattr(self, 'appliance_ac_label'):
+                    self.appliance_ac_label.config(text=f"Status: {str(decisions.get('ac', 'off')).title()}")
             
             # Update recommendations
             if 'recommendations' in data:
