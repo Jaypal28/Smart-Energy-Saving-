@@ -94,9 +94,10 @@ class EnergyManager:
                 if time_since_presence > effective_delay:
                     self.is_occupied = False
     
-    def make_decisions(self, detections: Dict, pose_analysis: Dict, 
+    def make_decisions(self, detections: Dict, pose_analysis: Dict,
                       brightness_analysis: Dict, airflow_analysis: Dict,
-                      audio_analysis: Optional[Dict] = None) -> Dict:
+                      audio_analysis: Optional[Dict] = None,
+                      gaze_analysis: Optional[Dict] = None) -> Dict:
         """
         Make energy-efficient automation decisions based on Vision, Environment, and Audio
         """
@@ -132,6 +133,21 @@ class EnergyManager:
             ac_state = 'off'
             system_status = 'off'
         
+        # ── Gaze-aware screen brightness ───────────────────────────────────
+        if gaze_analysis:
+            gaze_looking  = gaze_analysis.get('looking_at_screen', False)
+            face_detected = gaze_analysis.get('face_detected', False)
+            if gaze_looking:
+                screen_brightness = 90    # user actively looking
+            elif face_detected:
+                screen_brightness = 45    # user present but glancing away
+            else:
+                screen_brightness = 15    # no user — save power
+        else:
+            # Fallback to occupancy-based estimate
+            gaze_looking      = self.is_present_now
+            screen_brightness = 80 if self.is_occupied else 15
+
         decisions = {
             'lights': light_state,
             'ventilation': fan_state,
@@ -146,7 +162,10 @@ class EnergyManager:
             'domain_mode': self.domain_mode,
             'occupancy_status': 'occupied' if self.is_occupied else 'unoccupied',
             'duration_seconds': int(time.time() - self.presence_start_time) if (self.is_present_now and self.presence_start_time) else 0,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            # Gaze-aware fields
+            'gaze_looking':      gaze_looking,
+            'screen_brightness': screen_brightness,
         }
         
         # Domain specific adjustments

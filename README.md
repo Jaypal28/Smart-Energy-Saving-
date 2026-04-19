@@ -27,7 +27,11 @@ A comprehensive Python-based smart home automation system that uses OpenCV and c
    - Ventilation control recommendations
    - Optimal airflow range management
 
-5. **Energy Management**
+5. **Adaptive Screen Brightness (Presence-Aware)**
+   - **Hindi**: यह सिस्टम वेबकैम के ज़रिए इंसानी मौजूदगी का पता लगाने के लिए 'कंप्यूटर विज़न' का इस्तेमाल करता है, और लैपटॉप स्क्रीन की ब्राइटनेस को अपने-आप एडजस्ट करता है। जब किसी इंसान का पता चलता है, तो सिस्टम बेहतर विज़िबिलिटी के लिए ब्राइटनेस बढ़ा देता है। जब कुछ समय तक किसी इंसान का पता नहीं चलता, तो सिस्टम बिजली बचाने के लिए ब्राइटनेस कम कर देता है।
+   - **English**: Uses computer vision to detect human presence and dynamically adjusts laptop screen brightness. Increases brightness when present, and dims when absent to save energy.
+
+6. **Energy Management**
    - Intelligent automation decisions
    - Energy consumption tracking
    - Cost and savings calculations
@@ -113,7 +117,10 @@ smart-energy/
 ├── main.py                 # Main application entry point
 ├── detection_module.py     # Human/animal detection
 ├── pose_motion_module.py   # Pose and motion analysis
-├── brightness_module.py    # Brightness monitoring
+├── brightness_module.py    # Ambient brightness monitoring
+├── gaze_module.py          # Eye gaze & iris tracking
+├── screen_brightness_controller.py # OS brightness library
+├── presence_brightness_system.py # Standalone presence-brightness runner
 ├── airflow_module.py       # Airflow monitoring
 ├── energy_manager.py       # Energy management logic
 ├── gui_interface.py        # User interface

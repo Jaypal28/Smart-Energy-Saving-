@@ -34,6 +34,7 @@ from brightness_module import BrightnessModule
 from airflow_module import AirflowModule
 from energy_manager import EnergyManager
 from audio_module import AudioModule
+from screen_brightness_controller import ScreenBrightnessController
 from gui_interface import SmartHomeGUI
 import tkinter as tk
 from api_v2 import create_app, socketio, emit_system_update
@@ -89,6 +90,12 @@ class SmartHomeAutomation:
             simulation_mode=self.config.getboolean('Audio', 'simulation_mode', fallback=True),
             sensitivity=float(self.config.get('Audio', 'sensitivity', fallback='0.5'))
         )
+
+        # Screen brightness controller (presence-driven)
+        self.screen_brightness = ScreenBrightnessController(
+            simulation_mode=self.config.getboolean('Brightness', 'simulation_mode', fallback=True)
+        )
+        self._last_brightness_state = None   # track last state to avoid redundant calls
         
         # Current state
         self.current_frame = None
@@ -264,6 +271,22 @@ class SmartHomeAutomation:
         decisions = self.energy_manager.make_decisions(
             detections, pose_analysis, brightness_analysis, airflow_analysis, audio_analysis
         )
+
+        # 7. Presence-driven screen brightness adjustment
+        humans_found = len(detections.get('humans', [])) > 0
+        if humans_found:
+            new_brightness_state = 'present'
+            target_brightness    = self.screen_brightness.LEVEL_HIGH
+        elif self.energy_manager.is_occupied:
+            new_brightness_state = 'leaving'
+            target_brightness    = self.screen_brightness.LEVEL_MEDIUM
+        else:
+            new_brightness_state = 'absent'
+            target_brightness    = self.screen_brightness.LEVEL_LOW
+
+        if new_brightness_state != self._last_brightness_state:
+            self.screen_brightness.smooth_set(target_brightness, duration=1.2)
+            self._last_brightness_state = new_brightness_state
         
         # Update current data
         self.current_data = {
@@ -303,10 +326,18 @@ class SmartHomeAutomation:
         # Draw occupancy status (Bottom-Left)
         occupancy = self.current_data['decisions'].get('occupancy_status', 'unknown')
         color = (0, 255, 0) if occupancy == 'occupied' else (0, 0, 255)
-        cv2.putText(result_frame, f"Occupancy: {occupancy.title()}", (10, h - 45),
+        cv2.putText(result_frame, f"Occupancy: {occupancy.title()}", (10, h - 65),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-        
-        # Draw energy saving mode (Bottom-Left, below occupancy)
+
+        # Draw screen brightness level
+        bright_val  = self.screen_brightness.current_brightness
+        bright_state = self._last_brightness_state or 'unknown'
+        bright_col  = (0, 230, 100) if bright_state == 'present' else \
+                      (0, 190, 255) if bright_state == 'leaving' else (80, 80, 220)
+        cv2.putText(result_frame, f"Screen: {bright_val}% [{bright_state.upper()}]",
+                   (10, h - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, bright_col, 2)
+
+        # Draw energy saving mode
         if self.current_data['decisions'].get('energy_saving_active', False):
             cv2.putText(result_frame, "Energy Saving: ON", (10, h - 15),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)

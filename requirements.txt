@@ -28,3 +28,6 @@ python-dotenv
 # Hardware & Configuration
 pyserial
 configparser
+
+# Gaze-Aware Brightness System
+screen-brightness-control
